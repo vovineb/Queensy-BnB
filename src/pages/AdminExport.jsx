@@ -3,7 +3,8 @@ import React, { useEffect, useState } from 'react';
 import { db } from '../services/firebaseConfig';
 import { collection, getDocs } from 'firebase/firestore';
 import { format } from 'date-fns';
-import { Parser } from 'json2csv';
+import { unparse } from 'papaparse';
+
 
 export default function AdminExport() {
   const [bookings, setBookings] = useState([]);
