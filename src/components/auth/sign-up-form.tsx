@@ -33,9 +33,9 @@ export function SignUpForm({ next }: { next?: string }) {
       <fieldset className="space-y-3 rounded-xl bg-ink-50 p-4">
         <legend className="sr-only">Communication preferences</legend>
         <p className="text-sm font-medium text-ink-900">Would you like to hear about offers and new stays? <span className="font-normal text-ink-500">(optional — you can change this any time)</span></p>
-        <Checkbox name="marketingEmail" label="Email" />
-        <Checkbox name="marketingSms" label="SMS" />
-        <Checkbox name="marketingWhatsapp" label="WhatsApp" />
+        <Checkbox name="marketingEmail" label="Offers by email" />
+        <Checkbox name="marketingSms" label="Offers by SMS" />
+        <Checkbox name="marketingWhatsapp" label="Offers by WhatsApp" />
         <p className="text-xs text-ink-500">Booking confirmations and replies from our team are always sent, whatever you choose here.</p>
       </fieldset>
 

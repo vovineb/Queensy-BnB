@@ -17,26 +17,16 @@ export type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 /** Postgres error code for a violated EXCLUDE constraint. */
 export const EXCLUSION_VIOLATION = "23P01";
 
-/** Extracts the SQLSTATE code from a Prisma / driver adapter error, if any. */
+/** Extracts the Postgres SQLSTATE code from a Prisma / driver-adapter / pg error, if any. */
 export function pgErrorCode(error: unknown): string | undefined {
-  const seen = new Set<unknown>();
-  const visit = (e: unknown): string | undefined => {
-    if (!e || typeof e !== "object" || seen.has(e)) return undefined;
-    seen.add(e);
-    const obj = e as Record<string, unknown>;
-    if (typeof obj.code === "string" && /^[0-9A-Z]{5}$/.test(obj.code)) return obj.code;
-    const meta = obj.meta as Record<string, unknown> | undefined;
-    if (meta) {
-      const driver = meta.driverAdapterError as Record<string, unknown> | undefined;
-      const cause = driver?.cause as Record<string, unknown> | undefined;
-      if (typeof cause?.originalCode === "string") return cause.originalCode;
-      if (typeof meta.code === "string") return meta.code;
-    }
-    return visit(obj.cause) ?? visit(meta?.driverAdapterError);
-  };
-  const code = visit(error);
-  if (code) return code;
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("bookings_no_overlap") || message.includes("exclusion constraint")) return EXCLUSION_VIOLATION;
+  if (!error || typeof error !== "object") return undefined;
+  const e = error as { code?: unknown; meta?: { driverAdapterError?: { cause?: { originalCode?: unknown; code?: unknown } } }; cause?: unknown; message?: unknown };
+  const cause = e.meta?.driverAdapterError?.cause;
+  if (typeof cause?.originalCode === "string") return cause.originalCode;
+  if (typeof cause?.code === "string") return cause.code;
+  if (e.code === "P2002") return "23505"; // Prisma unique-constraint error
+  if (e.code === "P2003") return "23503"; // Prisma foreign-key error
+  if (typeof e.code === "string" && /^[0-9]{2}[0-9A-Z]{3}$/.test(e.code)) return e.code; // raw pg error
+  if (e.cause) return pgErrorCode(e.cause);
   return undefined;
 }

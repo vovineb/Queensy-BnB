@@ -30,7 +30,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // Docker builds set NEXT_OUTPUT=standalone for a minimal runtime image.
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
   poweredByHeader: false,
   typedRoutes: false,
   serverExternalPackages: ["sharp", "@node-rs/argon2", "pg"],

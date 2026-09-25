@@ -118,6 +118,9 @@
     border-radius: 4px;
   }
   button, [role="button"] { cursor: pointer; }
+  /* Grid items default to min-width:auto, letting wide content (tables, inputs)
+     blow out the track on small screens. Opt everything into shrinking. */
+  .grid > * { min-width: 0; }
   button:disabled { cursor: not-allowed; }
   input[type="number"]::-webkit-inner-spin-button { opacity: 1; }
 }

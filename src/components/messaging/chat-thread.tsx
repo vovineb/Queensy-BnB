@@ -32,7 +32,12 @@ function dayLabel(iso: string) {
 /** Realtime chat: optimistic sends, live delivery, typing indicator, read receipts. */
 export function ChatThread({ conversationId, viewer, initialMessages, initialOtherReadAt, closed, counterpartName }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
-  const [otherReadAt, setOtherReadAt] = useState(initialOtherReadAt);
+  const [otherReadAt, setOtherReadAtRaw] = useState(initialOtherReadAt);
+  // Read receipts only move forward: a slower thread refetch must not overwrite
+  // a newer "read" event that arrived in the meantime.
+  const setOtherReadAt = useCallback((next: string | null) => {
+    setOtherReadAtRaw((prev) => (!next ? prev : !prev || new Date(next) > new Date(prev) ? next : prev));
+  }, []);
   const [typing, setTyping] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -45,7 +50,7 @@ export function ChatThread({ conversationId, viewer, initialMessages, initialOth
     const thread = await fetchThreadAction(conversationId);
     setMessages((prev) => [...thread.messages, ...prev.filter((p) => p.status === "failed")]);
     setOtherReadAt(viewer === "staff" ? thread.customerLastReadAt : thread.staffLastReadAt);
-  }, [conversationId, viewer]);
+  }, [conversationId, viewer, setOtherReadAt]);
 
   const markRead = useCallback(() => {
     if (document.visibilityState === "visible") void markReadAction(conversationId);

@@ -18,7 +18,7 @@ export async function Footer() {
 
   return (
     <footer className="mt-24 border-t border-ink-200 bg-surface">
-      <div className="container-page grid gap-12 py-14 lg:grid-cols-[1.3fr_2fr]">
+      <div className="container-page grid grid-cols-[minmax(0,1fr)] gap-12 py-14 lg:grid-cols-[1.3fr_2fr]">
         <div className="max-w-sm space-y-5">
           <Logo />
           <p className="text-ink-600">{settings.tagline}. Real-time availability, transparent prices, and a local team in Kenya that answers.</p>

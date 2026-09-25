@@ -66,8 +66,10 @@ type PropertyForBooking = {
 };
 
 /** Validates stay rules (dates, horizon, nights, guests). Throws AppError with field errors. */
-export async function validateStay(property: PropertyForBooking, stay: StayRequest) {
-  const settings = await getSettings();
+export async function validateStay(property: PropertyForBooking, stay: StayRequest, settings?: { bookingHorizonDays: number }) {
+  // Callers inside a transaction must pass settings: querying through the global
+  // client while holding a pooled transaction connection can exhaust the pool.
+  settings ??= await getSettings();
   const checkIn = parseIsoDate(stay.checkIn);
   const checkOut = parseIsoDate(stay.checkOut);
   const nights = nightsBetween(checkIn, checkOut);
@@ -128,7 +130,7 @@ export async function createBooking(user: SessionUser, input: CreateBookingInput
         const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM properties WHERE id = ${input.propertyId} FOR UPDATE`;
         if (locked.length === 0) throw new AppError("NOT_FOUND", "Property not found.");
         const property = await tx.property.findUniqueOrThrow({ where: { id: input.propertyId } });
-        const { checkIn, checkOut, nights } = await validateStay(property, input);
+        const { checkIn, checkOut, nights } = await validateStay(property, input, settings);
 
         await runBookingMaintenance({ propertyId: property.id, tx });
         const ranges = await getUnavailableRanges(property.id, checkIn, checkOut, tx);

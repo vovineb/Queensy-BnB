@@ -15,7 +15,7 @@ export function NewsletterForm() {
         Offers and new stays, occasionally
       </label>
       <div className="flex gap-2">
-        <input id="newsletter-email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" className="h-11 min-w-0 flex-1 rounded-md bg-surface px-3.5 text-sm ring-1 ring-inset ring-ink-200 focus:outline-none focus:ring-2 focus:ring-lagoon-500" />
+        <input id="newsletter-email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" className="h-11 w-full min-w-0 flex-1 rounded-md bg-surface px-3.5 text-sm ring-1 ring-inset ring-ink-200 focus:outline-none focus:ring-2 focus:ring-lagoon-500" />
         <Button type="submit" variant="dark" loading={pending}>Subscribe</Button>
       </div>
       <label className="flex items-start gap-2 text-xs text-ink-500">
