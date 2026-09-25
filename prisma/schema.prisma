@@ -1,0 +1,786 @@
+// Queensy BnB data model.
+//
+// Conventions
+// - Money is stored as integers in minor units (e.g. KES 5,500.00 = 550000)
+//   alongside an ISO-4217 currency code.
+// - Stay dates are calendar dates (`@db.Date`); check-out is exclusive.
+// - Table/column names are snake_case in Postgres, camelCase in TypeScript.
+// - `legacyId` columns keep the original Firestore document id for traceability.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Identity & access
+// ---------------------------------------------------------------------------
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  DEACTIVATED
+}
+
+model User {
+  id              String     @id @default(cuid())
+  email           String     @unique // stored lower-cased
+  name            String
+  phone           String? // E.164, e.g. +254712345678
+  phoneCountry    String?    @map("phone_country") @db.Char(2) // ISO-3166 alpha-2
+  passwordHash    String?    @map("password_hash")
+  role            Role       @default(CUSTOMER)
+  status          UserStatus @default(ACTIVE)
+  locale          String?
+  emailVerifiedAt DateTime?  @map("email_verified_at")
+  lastLoginAt     DateTime?  @map("last_login_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  sessions            Session[]
+  authTokens          AuthToken[]
+  marketingPreference MarketingPreference?
+  consents            ConsentRecord[]
+  bookings            Booking[]
+  favorites           Favorite[]
+  reviews             Review[]
+  conversations       Conversation[]         @relation("CustomerConversations")
+  messages            Message[]
+  notifications       Notification[]
+  prospects           Prospect[]             @relation("ProspectUser")
+  assignedProspects   Prospect[]             @relation("ProspectAssignee")
+  prospectNotes       ProspectNote[]
+  auditLogs           AuditLog[]
+  bookingEvents       BookingStatusEvent[]
+  recordedPayments    Payment[]
+  availabilityBlocks  AvailabilityBlock[]
+
+  @@index([role])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model Session {
+  // sha256(token) — the raw token only ever lives in the user's cookie.
+  id        String   @id
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+enum AuthTokenPurpose {
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
+}
+
+model AuthToken {
+  id        String           @id @default(cuid())
+  tokenHash String           @unique @map("token_hash")
+  userId    String           @map("user_id")
+  purpose   AuthTokenPurpose
+  expiresAt DateTime         @map("expires_at")
+  usedAt    DateTime?        @map("used_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@map("auth_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Privacy & consent (Kenya Data Protection Act 2019 / GDPR-style)
+// ---------------------------------------------------------------------------
+
+// Current marketing choices for a user. The history lives in ConsentRecord.
+model MarketingPreference {
+  userId    String   @id @map("user_id")
+  email     Boolean  @default(false)
+  sms       Boolean  @default(false)
+  whatsapp  Boolean  @default(false)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("marketing_preferences")
+}
+
+enum ConsentType {
+  PRIVACY_NOTICE
+  TERMS
+  MARKETING_EMAIL
+  MARKETING_SMS
+  MARKETING_WHATSAPP
+}
+
+// Append-only audit trail of consent given or withdrawn.
+model ConsentRecord {
+  id            String      @id @default(cuid())
+  userId        String?     @map("user_id")
+  email         String? // for consents captured before an account exists
+  type          ConsentType
+  granted       Boolean
+  source        String // e.g. "signup", "account_settings", "newsletter_form"
+  policyVersion String      @map("policy_version")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, type, createdAt])
+  @@index([email])
+  @@map("consent_records")
+}
+
+// ---------------------------------------------------------------------------
+// Catalogue
+// ---------------------------------------------------------------------------
+
+model Destination {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  region      String? // county / area, e.g. "Kwale County"
+  country     String   @default("KE") @db.Char(2)
+  summary     String?
+  description String? // long-form, SEO-friendly guide content
+  imageUrl    String?  @map("image_url")
+  featured    Boolean  @default(false)
+  sortOrder   Int      @default(0) @map("sort_order")
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  properties Property[]
+
+  @@map("destinations")
+}
+
+enum PropertyType {
+  APARTMENT
+  STUDIO
+  PENTHOUSE
+  VILLA
+  HOUSE
+  COTTAGE
+  SUITE
+  ROOM
+}
+
+enum PropertyStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CancellationPolicy {
+  FLEXIBLE
+  MODERATE
+  STRICT
+  NON_REFUNDABLE
+}
+
+model Property {
+  id                 String             @id @default(cuid())
+  slug               String             @unique
+  legacyId           String?            @unique @map("legacy_id")
+  name               String
+  type               PropertyType       @default(APARTMENT)
+  status             PropertyStatus     @default(DRAFT)
+  featured           Boolean            @default(false)
+  summary            String // one-line pitch shown on cards
+  description        String
+  destinationId      String?            @map("destination_id")
+  neighborhood       String?
+  addressLine        String?            @map("address_line") // private; shared after booking
+  latitude           Decimal?           @db.Decimal(9, 6)
+  longitude          Decimal?           @db.Decimal(9, 6)
+  maxGuests          Int                @map("max_guests")
+  bedrooms           Int
+  beds               Int
+  bathrooms          Decimal            @default(1) @db.Decimal(3, 1)
+  currency           String             @default("KES") @db.Char(3)
+  basePrice          Int                @map("base_price") // per night, minor units
+  cleaningFee        Int                @default(0) @map("cleaning_fee")
+  minNights          Int                @default(1) @map("min_nights")
+  maxNights          Int?               @map("max_nights")
+  checkInTime        String             @default("14:00") @map("check_in_time")
+  checkOutTime       String             @default("10:00") @map("check_out_time")
+  houseRules         String?            @map("house_rules")
+  cancellationPolicy CancellationPolicy @default(MODERATE) @map("cancellation_policy")
+  cancellationNotes  String?            @map("cancellation_notes")
+  // Denormalised from published reviews (kept in sync by the review service) for fast sorting/filtering.
+  ratingAverage      Decimal?           @map("rating_average") @db.Decimal(3, 2)
+  reviewCount        Int                @default(0) @map("review_count")
+  publishedAt        DateTime?          @map("published_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  destination        Destination?        @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  images             PropertyImage[]
+  amenities          PropertyAmenity[]
+  rooms              Room[]
+  bookings           Booking[]
+  availabilityBlocks AvailabilityBlock[]
+  reviews            Review[]
+  favorites          Favorite[]
+  offers             OfferProperty[]
+  conversations      Conversation[]
+  inquiries          Inquiry[]
+
+  @@index([status, featured])
+  @@index([destinationId, status])
+  @@index([basePrice])
+  @@map("properties")
+}
+
+model PropertyImage {
+  id         String   @id @default(cuid())
+  propertyId String   @map("property_id")
+  url        String // largest rendition (or external URL for legacy images)
+  storageKey String?  @map("storage_key") // base key for renditions in our storage
+  width      Int?
+  height     Int?
+  alt        String   @default("")
+  caption    String?
+  sortOrder  Int      @default(0) @map("sort_order")
+  isCover    Boolean  @default(false) @map("is_cover")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, sortOrder])
+  @@map("property_images")
+}
+
+model Amenity {
+  id        String            @id @default(cuid())
+  slug      String            @unique
+  name      String
+  icon      String? // lucide icon name
+  category  String            @default("General")
+  createdAt DateTime          @default(now()) @map("created_at")
+  properties PropertyAmenity[]
+
+  @@map("amenities")
+}
+
+model PropertyAmenity {
+  propertyId String @map("property_id")
+  amenityId  String @map("amenity_id")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  amenity  Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, amenityId])
+  @@index([amenityId])
+  @@map("property_amenities")
+}
+
+// Sleeping arrangements, e.g. "Main bedroom — King bed".
+model Room {
+  id         String @id @default(cuid())
+  propertyId String @map("property_id")
+  name       String
+  beds       String // human description, e.g. "1 king bed"
+  sortOrder  Int    @default(0) @map("sort_order")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@map("rooms")
+}
+
+// Dates the admin has closed (maintenance, owner use...). End date exclusive.
+model AvailabilityBlock {
+  id          String   @id @default(cuid())
+  propertyId  String   @map("property_id")
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime @map("end_date") @db.Date
+  reason      String?
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([propertyId, startDate])
+  @@map("availability_blocks")
+}
+
+// ---------------------------------------------------------------------------
+// Bookings & payments
+// ---------------------------------------------------------------------------
+
+enum BookingStatus {
+  PENDING // request received, dates held until expires_at
+  AWAITING_PAYMENT // approved, waiting for payment, dates held until expires_at
+  PAID // payment recorded
+  CONFIRMED // reservation guaranteed
+  COMPLETED // stay finished
+  CANCELLED
+  EXPIRED // hold lapsed without confirmation/payment
+  REFUNDED
+}
+
+model Booking {
+  id                 String        @id @default(cuid())
+  reference          String        @unique // human friendly, e.g. QB-7K2M9P
+  legacyId           String?       @unique @map("legacy_id")
+  propertyId         String        @map("property_id")
+  userId             String?       @map("user_id") // null only for imported legacy bookings
+  checkIn            DateTime      @map("check_in") @db.Date
+  checkOut           DateTime      @map("check_out") @db.Date
+  nights             Int
+  adults             Int           @default(1)
+  children           Int           @default(0)
+  infants            Int           @default(0)
+  status             BookingStatus @default(PENDING)
+  // Price snapshot — never recomputed after creation.
+  currency           String        @db.Char(3)
+  nightlyRate        Int           @map("nightly_rate")
+  subtotal           Int
+  discountAmount     Int           @default(0) @map("discount_amount")
+  cleaningFee        Int           @default(0) @map("cleaning_fee")
+  total              Int
+  offerId            String?       @map("offer_id")
+  // Guest contact snapshot at the time of booking.
+  guestName          String        @map("guest_name")
+  guestEmail         String        @map("guest_email")
+  guestPhone         String?       @map("guest_phone")
+  specialRequests    String?       @map("special_requests")
+  expiresAt          DateTime?     @map("expires_at")
+  confirmedAt        DateTime?     @map("confirmed_at")
+  cancelledAt        DateTime?     @map("cancelled_at")
+  cancellationReason String?       @map("cancellation_reason")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  property      Property             @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  user          User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  offer         Offer?               @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  events        BookingStatusEvent[]
+  payments      Payment[]
+  review        Review?
+  conversations Conversation[]
+
+  // NOTE: overlap prevention is an EXCLUDE constraint added in raw SQL
+  // (see migration `booking_overlap_guard`) because Prisma cannot express it.
+  @@index([propertyId, checkIn, checkOut])
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
+  @@index([createdAt])
+  @@map("bookings")
+}
+
+model BookingStatusEvent {
+  id         String         @id @default(cuid())
+  bookingId  String         @map("booking_id")
+  fromStatus BookingStatus? @map("from_status")
+  toStatus   BookingStatus  @map("to_status")
+  actorId    String?        @map("actor_id") // null = system
+  note       String?
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, createdAt])
+  @@map("booking_status_events")
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+// Provider-agnostic payment ledger. Today admins record payments received
+// offline ("manual" provider); M-Pesa / card providers plug in later.
+model Payment {
+  id           String        @id @default(cuid())
+  bookingId    String        @map("booking_id")
+  provider     String // "manual", later "mpesa", "stripe", ...
+  providerRef  String?       @map("provider_ref") // receipt / transaction id
+  method       String? // "mpesa", "bank_transfer", "cash", "card"
+  amount       Int
+  currency     String        @db.Char(3)
+  status       PaymentStatus @default(PENDING)
+  recordedById String?       @map("recorded_by_id")
+  metadata     Json?
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  booking    Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  recordedBy User?   @relation(fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerRef])
+  @@index([bookingId])
+  @@index([status, createdAt])
+  @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// Reviews & favourites
+// ---------------------------------------------------------------------------
+
+enum ReviewStatus {
+  PUBLISHED
+  HIDDEN
+}
+
+model Review {
+  id                 String       @id @default(cuid())
+  legacyId           String?      @unique @map("legacy_id")
+  propertyId         String       @map("property_id")
+  bookingId          String?      @unique @map("booking_id") // verified stay
+  userId             String?      @map("user_id")
+  authorName         String       @map("author_name")
+  rating             Decimal      @db.Decimal(2, 1) // overall, average of dimensions
+  hostRating         Int          @map("host_rating")
+  amenitiesRating    Int          @map("amenities_rating")
+  cleanlinessRating  Int          @map("cleanliness_rating")
+  neighborhoodRating Int          @map("neighborhood_rating")
+  comment            String?
+  status             ReviewStatus @default(PUBLISHED)
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  booking  Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId, status, createdAt])
+  @@map("reviews")
+}
+
+model Favorite {
+  userId     String   @map("user_id")
+  propertyId String   @map("property_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, propertyId])
+  @@index([propertyId])
+  @@map("favorites")
+}
+
+// ---------------------------------------------------------------------------
+// Messaging (customer <-> Queensy team inbox)
+// ---------------------------------------------------------------------------
+
+enum ConversationStatus {
+  OPEN
+  CLOSED
+}
+
+model Conversation {
+  id                String             @id @default(cuid())
+  customerId        String             @map("customer_id")
+  propertyId        String?            @map("property_id")
+  bookingId         String?            @map("booking_id")
+  subject           String
+  status            ConversationStatus @default(OPEN)
+  lastMessageAt     DateTime           @default(now()) @map("last_message_at")
+  customerLastReadAt DateTime?         @map("customer_last_read_at")
+  staffLastReadAt   DateTime?          @map("staff_last_read_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  customer User      @relation("CustomerConversations", fields: [customerId], references: [id], onDelete: Cascade)
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  booking  Booking?  @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  messages Message[]
+
+  @@index([customerId, lastMessageAt])
+  @@index([status, lastMessageAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  senderId       String?  @map("sender_id")
+  fromStaff      Boolean  @map("from_staff")
+  body           String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User?        @relation(fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+// ---------------------------------------------------------------------------
+// Marketing: offers & announcements
+// ---------------------------------------------------------------------------
+
+enum DiscountType {
+  PERCENT
+  FIXED // minor units, per booking, in the property's currency
+}
+
+model Offer {
+  id            String       @id @default(cuid())
+  title         String
+  description   String?
+  promoCopy     String?      @map("promo_copy") // short banner text
+  imageUrl      String?      @map("image_url")
+  discountType  DiscountType @map("discount_type")
+  discountValue Int          @map("discount_value") // percent (1-100) or minor units
+  minNights     Int          @default(1) @map("min_nights")
+  startsAt      DateTime     @map("starts_at")
+  endsAt        DateTime     @map("ends_at")
+  active        Boolean      @default(true)
+  appliesToAll  Boolean      @default(true) @map("applies_to_all")
+  showBanner    Boolean      @default(false) @map("show_banner")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  properties OfferProperty[]
+  bookings   Booking[]
+
+  @@index([active, startsAt, endsAt])
+  @@map("offers")
+}
+
+model OfferProperty {
+  offerId    String @map("offer_id")
+  propertyId String @map("property_id")
+
+  offer    Offer    @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([offerId, propertyId])
+  @@index([propertyId])
+  @@map("offer_properties")
+}
+
+enum AnnouncementKind {
+  PRICE_UPDATE
+  NEW_PROPERTY
+  SPECIAL_OFFER
+  SEASONAL
+  SERVICE
+}
+
+enum PublishStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Announcement {
+  id          String           @id @default(cuid())
+  slug        String           @unique
+  title       String
+  body        String
+  kind        AnnouncementKind @default(SERVICE)
+  imageUrl    String?          @map("image_url")
+  ctaLabel    String?          @map("cta_label")
+  ctaUrl      String?          @map("cta_url")
+  status      PublishStatus    @default(DRAFT)
+  publishAt   DateTime         @default(now()) @map("publish_at")
+  expiresAt   DateTime?        @map("expires_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@index([status, publishAt])
+  @@map("announcements")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications (in-app now; email/SMS/push/WhatsApp via channel adapters)
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  type      String // booking.created, booking.updated, message.new, offer, announcement, account
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries NotificationDelivery[]
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+model NotificationDelivery {
+  id             String    @id @default(cuid())
+  notificationId String    @map("notification_id")
+  channel        String // email, sms, push, whatsapp
+  status         String // sent, failed, skipped
+  error          String?
+  sentAt         DateTime? @map("sent_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@map("notification_deliveries")
+}
+
+// ---------------------------------------------------------------------------
+// Leads
+// ---------------------------------------------------------------------------
+
+enum InquiryStatus {
+  NEW
+  IN_PROGRESS
+  CLOSED
+}
+
+// Messages from the public contact form (no account required).
+model Inquiry {
+  id         String        @id @default(cuid())
+  legacyId   String?       @unique @map("legacy_id")
+  name       String
+  email      String?
+  phone      String?
+  topic      String
+  message    String
+  propertyId String?       @map("property_id")
+  attachmentUrl String?    @map("attachment_url")
+  status     InquiryStatus @default(NEW)
+  prospectId String?       @map("prospect_id")
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  prospect Prospect? @relation(fields: [prospectId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("inquiries")
+}
+
+enum ProspectSource {
+  INQUIRY
+  ABANDONED_BOOKING
+  NEWSLETTER
+  SIGNUP
+  MANUAL
+}
+
+enum ProspectStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  LOST
+}
+
+model Prospect {
+  id               String         @id @default(cuid())
+  name             String?
+  email            String?        @unique
+  phone            String?
+  source           ProspectSource
+  status           ProspectStatus @default(NEW)
+  // Consent for *marketing* contact. Service replies to an inquiry do not need it.
+  marketingConsent Boolean        @default(false) @map("marketing_consent")
+  userId           String?        @map("user_id")
+  assignedToId     String?        @map("assigned_to_id")
+  lastContactedAt  DateTime?      @map("last_contacted_at")
+  nextFollowUpAt   DateTime?      @map("next_follow_up_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  user       User?          @relation("ProspectUser", fields: [userId], references: [id], onDelete: SetNull)
+  assignedTo User?          @relation("ProspectAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  notes      ProspectNote[]
+  inquiries  Inquiry[]
+
+  @@index([status, createdAt])
+  @@map("prospects")
+}
+
+model ProspectNote {
+  id         String   @id @default(cuid())
+  prospectId String   @map("prospect_id")
+  authorId   String?  @map("author_id")
+  body       String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  prospect Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  author   User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([prospectId, createdAt])
+  @@map("prospect_notes")
+}
+
+// ---------------------------------------------------------------------------
+// Analytics, audit, settings, infrastructure
+// ---------------------------------------------------------------------------
+
+// First-party product analytics. No IP addresses or raw user agents are stored.
+model AnalyticsEvent {
+  id         BigInt   @id @default(autoincrement())
+  name       String // page_view, property_view, search, favorite_added, booking_started, ...
+  visitorId  String   @map("visitor_id") // random id from a first-party cookie
+  userId     String?  @map("user_id")
+  propertyId String?  @map("property_id")
+  path       String?
+  props      Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([name, createdAt])
+  @@index([propertyId, name])
+  @@index([visitorId, createdAt])
+  @@map("analytics_events")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?  @map("actor_id")
+  action     String // e.g. property.update, booking.cancel, user.role_change
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// Admin-editable key/value settings (contact details, booking hold hours...).
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+// Fixed-window rate limiting shared across app instances.
+model RateLimit {
+  key         String   @id
+  count       Int
+  windowStart DateTime @map("window_start")
+
+  @@map("rate_limits")
+}
