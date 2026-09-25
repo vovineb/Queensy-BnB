@@ -19,3 +19,9 @@ export const CANCELLATION_POLICY_COPY: Record<string, { label: string; summary: 
   STRICT: { label: "Strict", summary: "50% refund up to 14 days before check-in. No refund after that." },
   NON_REFUNDABLE: { label: "Non-refundable", summary: "This booking can't be refunded once confirmed." },
 };
+
+export const PROPERTY_STATUS = {
+  PUBLISHED: { label: "Published", tone: "success" as const },
+  DRAFT: { label: "Draft", tone: "warning" as const },
+  ARCHIVED: { label: "Archived", tone: "neutral" as const },
+};

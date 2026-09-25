@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, BadgeCheck, CalendarCheck2, MessagesSquare, Receipt, Star } from "lucide-react";
+import { ArrowRight, BadgeCheck, MapPin, CalendarCheck2, MessagesSquare, Receipt, Star } from "lucide-react";
 import { getCurrentUser } from "@/server/auth/session";
 import {
   getActiveOffers,
@@ -72,8 +72,16 @@ export default async function HomePage() {
               return (
                 <Reveal key={d.id} delay={i * 0.04}>
                   <Link href={`/destinations/${d.slug}`} className="group relative block aspect-[4/5] overflow-hidden rounded-xl bg-lagoon-900">
-                    <ResponsiveImage image={image} alt="" sizes="(min-width:1024px) 25vw, 50vw" className="h-full w-full transition-transform duration-700 group-hover:scale-105" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-ink-950/75 via-ink-950/10 to-transparent" aria-hidden />
+                    {image ? (
+                      <>
+                        <ResponsiveImage image={image} alt="" sizes="(min-width:1024px) 25vw, 50vw" className="h-full w-full transition-transform duration-700 group-hover:scale-105" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-ink-950/75 via-ink-950/10 to-transparent" aria-hidden />
+                      </>
+                    ) : (
+                      <div className="flex h-full items-start justify-end bg-lagoon-800 p-4 transition-colors group-hover:bg-lagoon-700" aria-hidden>
+                        <MapPin className="size-6 text-lagoon-300" />
+                      </div>
+                    )}
                     <div className="absolute inset-x-0 bottom-0 p-4 text-white">
                       <h3 className="font-display text-lg font-semibold text-white sm:text-xl">{d.name}</h3>
                       <p className="text-sm text-white/80">

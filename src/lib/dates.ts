@@ -49,3 +49,8 @@ export function eachNight(checkIn: Date, checkOut: Date): Date[] {
 export function rangesOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
   return aStart < bEnd && bStart < aEnd;
 }
+
+/** The instant `days` days before now. */
+export function daysAgo(days: number, now = new Date()): Date {
+  return new Date(now.getTime() - days * DAY_MS);
+}

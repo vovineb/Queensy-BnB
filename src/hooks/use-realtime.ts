@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent } from "react";
 
 export type RealtimeHandler = (type: string, data: Record<string, unknown>) => void;
 
@@ -12,10 +12,8 @@ const EVENT_TYPES = ["ready", "notification", "booking", "message", "typing", "r
  * missed while disconnected.
  */
 export function useRealtime(channels: string[], onEvent: RealtimeHandler, opts: { enabled?: boolean; onReconnect?: () => void } = {}) {
-  const handler = useRef(onEvent);
-  const reconnect = useRef(opts.onReconnect);
-  handler.current = onEvent;
-  reconnect.current = opts.onReconnect;
+  const handleEvent = useEffectEvent((type: string, data: Record<string, unknown>) => onEvent(type, data));
+  const handleReconnect = useEffectEvent(() => opts.onReconnect?.());
   const key = channels.join(",");
   const enabled = opts.enabled ?? true;
 
@@ -32,11 +30,11 @@ export function useRealtime(channels: string[], onEvent: RealtimeHandler, opts: 
           /* ignore */
         }
         if (type === "ready") {
-          if (opened) reconnect.current?.();
+          if (opened) handleReconnect();
           opened = true;
           return;
         }
-        handler.current(type, data);
+        handleEvent(type, data);
       };
       source.addEventListener(type, fn);
       return [type, fn] as const;

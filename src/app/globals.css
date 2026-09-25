@@ -48,6 +48,7 @@
   --color-sunset-800: #832f1f;
   --color-sunset-900: #6b291d;
 
+  --color-chart-1: #0f8b7c; /* validated: chroma, lightness band, >=3:1 vs surface */
   --color-gold-400: #eab53a;
   --color-gold-500: #d99a1e;
 
