@@ -8,6 +8,7 @@ const schema = z.object({
   DIRECT_DATABASE_URL: z.string().optional(),
   APP_SECRET: z.string().min(32, "APP_SECRET must be at least 32 characters"),
   CRON_SECRET: z.string().optional(),
+  OWNER_EMAIL: z.email().optional(),
   SMTP_URL: z.string().optional(),
   EMAIL_FROM: z.string().default("Queensy BnB <no-reply@localhost>"),
   STORAGE_DRIVER: z.enum(["local", "s3", "vercel-blob"]).optional(),

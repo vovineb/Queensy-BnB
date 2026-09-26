@@ -19,6 +19,7 @@ import { ResponsiveImage } from "@/components/ui/image";
 import { ButtonLink } from "@/components/ui/button";
 import { Reveal } from "@/components/ui/reveal";
 import { JsonLd, organizationJsonLd, websiteJsonLd } from "@/lib/seo";
+import { MOMBASA_HERO } from "@/lib/hero-photo";
 
 export const dynamic = "force-dynamic";
 
@@ -42,11 +43,32 @@ export default async function HomePage() {
 
       {/* Hero */}
       <section className="relative isolate overflow-hidden bg-lagoon-950">
-        {heroImage && (
-          <>
-            <ResponsiveImage image={heroImage} alt="" priority sizes="100vw" className="absolute inset-0 -z-10 h-full w-full" />
-            <div className="absolute inset-0 -z-10 bg-gradient-to-b from-ink-950/55 via-ink-950/35 to-ink-950/70" aria-hidden />
-          </>
+        {/* Phones and tablets: the hero image from Settings, or a featured stay's photo. */}
+        {heroImage && <ResponsiveImage image={heroImage} alt="" priority sizes="100vw" className="absolute inset-0 -z-10 h-full w-full lg:hidden" />}
+        {/* Desktop: the Settings hero image if one is set, otherwise Mombasa, slightly dulled. */}
+        {settings.heroImageUrl ? (
+          <ResponsiveImage image={{ url: settings.heroImageUrl, alt: "" }} alt="" priority sizes="100vw" className="absolute inset-0 -z-10 hidden h-full w-full lg:block" />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={MOMBASA_HERO.src}
+            srcSet={MOMBASA_HERO.srcSet}
+            sizes="100vw"
+            width={MOMBASA_HERO.width}
+            height={MOMBASA_HERO.height}
+            alt=""
+            fetchPriority="high"
+            decoding="async"
+            className="absolute inset-0 -z-10 hidden h-full w-full object-cover brightness-[.8] saturate-[.7] lg:block"
+          />
+        )}
+        {(heroImage || !settings.heroImageUrl) && (
+          <div className={`absolute inset-0 -z-10 bg-gradient-to-b from-ink-950/55 via-ink-950/35 to-ink-950/70${heroImage ? "" : " hidden lg:block"}`} aria-hidden />
+        )}
+        {!settings.heroImageUrl && (
+          <a href={MOMBASA_HERO.credit.href} target="_blank" rel="noopener noreferrer" className="absolute bottom-2 right-3 hidden text-[11px] text-white/60 hover:text-white/90 lg:block">
+            {MOMBASA_HERO.credit.text}
+          </a>
         )}
         <div className="container-page pb-10 pt-16 sm:pb-16 sm:pt-24 lg:pb-24 lg:pt-32">
           <div className="max-w-3xl">

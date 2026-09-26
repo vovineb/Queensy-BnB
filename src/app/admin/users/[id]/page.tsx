@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/server/db";
 import { requireAdminPage } from "@/server/auth/guards";
+import { canManageAdmins, isOwner } from "@/server/auth/owner";
 import { formatDateRange, formatDateTime, formatMoney } from "@/lib/format";
 import { formatPhone } from "@/lib/phone";
 import { daysAgo } from "@/lib/dates";
@@ -35,18 +36,19 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
   const ev = (n: string) => events.find((e) => e.name === n)?._count ?? 0;
   const lifetime = user.bookings.filter((b) => ["PAID", "CONFIRMED", "COMPLETED"].includes(b.status));
   const self = admin.id === user.id;
+  const owner = isOwner(user);
 
   return (
     <>
       <PageHeader
         back={{ href: "/admin/users", label: "Users" }}
-        title={<span className="flex flex-wrap items-center gap-2">{user.name}{user.role === "ADMIN" && <Badge tone="brand">Admin</Badge>}{user.status !== "ACTIVE" && <Badge tone="danger">Deactivated</Badge>}</span>}
+        title={<span className="flex flex-wrap items-center gap-2">{user.name}{owner ? <Badge tone="brand">Owner</Badge> : user.role === "ADMIN" && <Badge tone="brand">Admin</Badge>}{user.status !== "ACTIVE" && <Badge tone="danger">Deactivated</Badge>}</span>}
         description={`Joined ${formatDateTime(user.createdAt)}${user.lastLoginAt ? ` · last sign-in ${formatDateTime(user.lastLoginAt)}` : ""}`}
         actions={!self && (
           <>
             {user.prospects.length === 0 && user.role === "CUSTOMER" && <ActionButton onClick={prospectFromUserAction.bind(null, user.id)}>Add to prospects</ActionButton>}
-            <ActionButton onClick={setUserRoleAction.bind(null, user.id, user.role === "ADMIN" ? "CUSTOMER" : "ADMIN")}>{user.role === "ADMIN" ? "Remove admin access" : "Make admin"}</ActionButton>
-            <ActionButton tone={user.status === "ACTIVE" ? "danger" : "default"} onClick={setUserStatusAction.bind(null, user.id, user.status === "ACTIVE" ? "DEACTIVATED" : "ACTIVE")}>{user.status === "ACTIVE" ? "Deactivate" : "Reactivate"}</ActionButton>
+            {canManageAdmins(admin) && !owner && <ActionButton onClick={setUserRoleAction.bind(null, user.id, user.role === "ADMIN" ? "CUSTOMER" : "ADMIN")}>{user.role === "ADMIN" ? "Remove admin access" : "Make admin"}</ActionButton>}
+            {!owner && <ActionButton tone={user.status === "ACTIVE" ? "danger" : "default"} onClick={setUserStatusAction.bind(null, user.id, user.status === "ACTIVE" ? "DEACTIVATED" : "ACTIVE")}>{user.status === "ACTIVE" ? "Deactivate" : "Reactivate"}</ActionButton>}
           </>
         )}
       />

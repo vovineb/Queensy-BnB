@@ -11,6 +11,7 @@ Use a separate database for each environment. Copy `.env.example` and fill it in
 | `DIRECT_DATABASE_URL` | same | **direct** (non-pooled) URL | Needed for migrations and realtime `LISTEN`. PgBouncer transaction pooling doesn't support `LISTEN`. |
 | `APP_SECRET` | any 32+ chars | `openssl rand -base64 48` | HMAC key for rate-limit identifiers |
 | `CRON_SECRET` | any | random | Bearer token for `/api/cron/maintenance` |
+| `OWNER_EMAIL` | optional | the owner's email | Only this account can grant or remove admin access. See `docs/ACCOUNTS.md`. |
 | `SMTP_URL`, `EMAIL_FROM` | optional | **required** | Without SMTP, emails are logged (dev) or skipped (prod), and the admin shows a warning. |
 | `STORAGE_DRIVER` | `local` | `s3` | Local disk is only for a single persistent server. |
 | `S3_*` | — | bucket credentials | Any S3-compatible store: Supabase Storage, Cloudflare R2, AWS S3 |

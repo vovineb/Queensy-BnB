@@ -122,6 +122,28 @@ describe("server-side authorisation of admin operations", () => {
     // Promoted user's existing sessions are revoked so privileges are re-evaluated.
     expect(await db.session.count({ where: { userId: target.id } })).toBe(0);
   });
+
+  it("lets only the site owner grant admin access when OWNER_EMAIL is set", async () => {
+    process.env.OWNER_EMAIL = "Owner@Example.com";
+    try {
+      const owner = await makeUser({ role: "ADMIN", email: "owner@example.com" });
+      const staff = await makeUser({ role: "ADMIN" });
+      const target = await makeUser();
+      await signInAs(staff);
+      expect(await setUserRoleAction(target.id, "ADMIN")).toMatchObject({ ok: false, code: "FORBIDDEN" });
+      expect(await setUserRoleAction(owner.id, "CUSTOMER")).toMatchObject({ ok: false, code: "FORBIDDEN" });
+      expect(await setUserStatusAction(owner.id, "DEACTIVATED")).toMatchObject({ ok: false, code: "FORBIDDEN" });
+      expect((await db.user.findUniqueOrThrow({ where: { id: target.id } })).role).toBe("CUSTOMER");
+      expect((await db.user.findUniqueOrThrow({ where: { id: owner.id } })).status).toBe("ACTIVE");
+
+      cookieJar.clear();
+      await signInAs(owner);
+      expect(await setUserRoleAction(target.id, "ADMIN")).toMatchObject({ ok: true });
+      expect(await setUserRoleAction(staff.id, "CUSTOMER")).toMatchObject({ ok: true });
+    } finally {
+      delete process.env.OWNER_EMAIL;
+    }
+  });
 });
 
 describe("rate limiting", () => {

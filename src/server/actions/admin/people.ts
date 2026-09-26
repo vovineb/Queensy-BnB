@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/server/db";
 import { AppError, toActionError, type ActionResult } from "@/server/errors";
 import { requireAdmin } from "@/server/auth/guards";
+import { canManageAdmins, isOwner, ownerEmail } from "@/server/auth/owner";
 import { audit } from "@/server/services/audit";
 import { setReviewStatus } from "@/server/services/reviews";
 import { setConversationStatus } from "@/server/services/messaging";
@@ -17,6 +18,7 @@ export async function setUserRoleAction(userId: string, role: Role): Promise<Act
   try {
     const admin = await requireAdmin();
     if (userId === admin.id) throw new AppError("FORBIDDEN", "You can't change your own role.");
+    if (!canManageAdmins(admin)) throw new AppError("FORBIDDEN", `Only the site owner (${ownerEmail()}) can grant or remove admin access.`);
     if (role === "CUSTOMER") {
       const admins = await db.user.count({ where: { role: "ADMIN", status: "ACTIVE" } });
       if (admins <= 1) throw new AppError("FORBIDDEN", "There must be at least one active admin.");
@@ -35,6 +37,8 @@ export async function setUserStatusAction(userId: string, status: "ACTIVE" | "DE
   try {
     const admin = await requireAdmin();
     if (userId === admin.id) throw new AppError("FORBIDDEN", "You can't deactivate your own account.");
+    const target = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } });
+    if (isOwner(target)) throw new AppError("FORBIDDEN", "The site owner's account can't be deactivated.");
     await db.user.update({ where: { id: userId }, data: { status } });
     if (status === "DEACTIVATED") await db.session.deleteMany({ where: { userId } });
     await audit({ actorId: admin.id, action: `user.${status.toLowerCase()}`, entityType: "user", entityId: userId });
