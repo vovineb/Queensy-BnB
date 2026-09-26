@@ -1,4 +1,5 @@
 import "server-only";
+import { getSiteUrl } from "@/lib/site-url";
 import { db } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { randomToken, sha256 } from "@/server/crypto";
@@ -13,7 +14,7 @@ import { track } from "./analytics";
 /** Bump when the privacy notice / terms materially change; stored with each consent record. */
 export const POLICY_VERSION = "2026-09";
 
-const siteUrl = () => process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+const siteUrl = getSiteUrl;
 
 export type SignUpInput = {
   name: string;

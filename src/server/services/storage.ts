@@ -2,12 +2,17 @@ import "server-only";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DeleteObjectsCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { del as blobDel, put as blobPut } from "@vercel/blob";
+import { AppError } from "@/server/errors";
 
-// Storage adapter: local disk for development, any S3-compatible bucket in production.
+// Storage adapter: local disk for development; Vercel Blob or any S3-compatible
+// bucket in production.
 
 export interface StorageDriver {
   put(key: string, body: Buffer, contentType: string): Promise<void>;
   deleteMany(keys: string[]): Promise<void>;
+  /** Delete by public URL (drivers whose URLs aren't derivable from keys alone). */
+  deleteUrls?(urls: string[]): Promise<void>;
   publicUrl(key: string): string;
 }
 
@@ -68,8 +73,49 @@ function s3Driver(): StorageDriver {
   };
 }
 
+/** Vercel Blob (public store). The store's public base URL is learned from upload responses. */
+function vercelBlobDriver(): StorageDriver {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) throw new AppError("VALIDATION", "Photo storage needs BLOB_READ_WRITE_TOKEN (connect a Vercel Blob store).");
+  let base = process.env.BLOB_PUBLIC_URL?.replace(/\/$/, "") ?? null;
+  const baseOrThrow = () => {
+    if (!base) throw new Error("Vercel Blob base URL unknown until the first upload; set BLOB_PUBLIC_URL");
+    return base;
+  };
+  return {
+    async put(key, body, contentType) {
+      const k = safeKey(key);
+      const result = await blobPut(k, body, { access: "public", contentType, token, addRandomSuffix: false, allowOverwrite: true, cacheControlMaxAge: 31536000 });
+      base ??= result.url.slice(0, result.url.length - k.length - 1);
+    },
+    async deleteMany(keys) {
+      if (keys.length) await blobDel(keys.map((k) => `${baseOrThrow()}/${safeKey(k)}`), { token });
+    },
+    async deleteUrls(urls) {
+      if (urls.length) await blobDel(urls, { token });
+    },
+    publicUrl: (key) => `${baseOrThrow()}/${safeKey(key)}`,
+  };
+}
+
+function selectedDriver(): "local" | "s3" | "vercel-blob" {
+  const explicit = process.env.STORAGE_DRIVER;
+  if (explicit === "s3" || explicit === "vercel-blob" || explicit === "local") return explicit;
+  if (process.env.BLOB_READ_WRITE_TOKEN) return "vercel-blob";
+  return "local";
+}
+
 let driver: StorageDriver | null = null;
 export function storage(): StorageDriver {
-  if (!driver) driver = process.env.STORAGE_DRIVER === "s3" ? s3Driver() : localDriver;
+  if (driver) return driver;
+  const kind = selectedDriver();
+  if (kind === "local" && process.env.VERCEL) {
+    throw new AppError("VALIDATION", "Photo storage isn't set up yet: in Vercel, open Storage → Create → Blob and connect it to this project, then redeploy.");
+  }
+  driver = kind === "s3" ? s3Driver() : kind === "vercel-blob" ? vercelBlobDriver() : localDriver;
   return driver;
+}
+
+export function isLocalStorage() {
+  return selectedDriver() === "local";
 }

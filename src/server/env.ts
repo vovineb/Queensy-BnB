@@ -3,14 +3,15 @@ import { z } from "zod";
 
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  NEXT_PUBLIC_SITE_URL: z.url().default("http://localhost:3000"),
+  NEXT_PUBLIC_SITE_URL: z.url().optional(),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   DIRECT_DATABASE_URL: z.string().optional(),
   APP_SECRET: z.string().min(32, "APP_SECRET must be at least 32 characters"),
   CRON_SECRET: z.string().optional(),
   SMTP_URL: z.string().optional(),
   EMAIL_FROM: z.string().default("Queensy BnB <no-reply@localhost>"),
-  STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
+  STORAGE_DRIVER: z.enum(["local", "s3", "vercel-blob"]).optional(),
+  BLOB_READ_WRITE_TOKEN: z.string().optional(),
   S3_ENDPOINT: z.string().optional(),
   S3_REGION: z.string().default("auto"),
   S3_BUCKET: z.string().optional(),

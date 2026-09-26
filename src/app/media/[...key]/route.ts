@@ -1,8 +1,8 @@
-import { readLocalObject } from "@/server/services/storage";
+import { isLocalStorage, readLocalObject } from "@/server/services/storage";
 
 /** Serves locally stored uploads (development / single-server deployments). */
 export async function GET(_request: Request, ctx: { params: Promise<{ key: string[] }> }) {
-  if (process.env.STORAGE_DRIVER === "s3") return new Response("Not found", { status: 404 });
+  if (!isLocalStorage()) return new Response("Not found", { status: 404 });
   const { key } = await ctx.params;
   let body: Buffer | null = null;
   try {

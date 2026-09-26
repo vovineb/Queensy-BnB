@@ -1,4 +1,5 @@
 import "server-only";
+import { getSiteUrl } from "@/lib/site-url";
 import { db } from "@/server/db";
 import { publish } from "@/server/realtime";
 import { renderEmail, sendEmail } from "./mailer";
@@ -27,7 +28,7 @@ interface ChannelAdapter {
   send(to: Recipient, n: NotificationInput): Promise<{ status: "sent" | "skipped" | "failed"; error?: string }>;
 }
 
-const siteUrl = () => process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+const siteUrl = getSiteUrl;
 
 const emailAdapter: ChannelAdapter = {
   channel: "email",

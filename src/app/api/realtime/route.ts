@@ -4,6 +4,10 @@ import { realtimeHub, type RealtimeEvent } from "@/server/realtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+// Serverless hosts cap how long a response can stay open. We end the stream a
+// little before the cap; EventSource reconnects and clients refetch.
+export const maxDuration = 300;
+const SERVERLESS_STREAM_MS = 280_000;
 
 const MAX_CHANNELS = 12;
 
@@ -58,6 +62,7 @@ export async function GET(request: Request) {
         }
       };
       request.signal.addEventListener("abort", () => cleanup?.());
+      if (process.env.VERCEL) setTimeout(() => cleanup?.(), SERVERLESS_STREAM_MS);
       send(`retry: 3000\nevent: ready\ndata: ${JSON.stringify({ channels: granted.length })}\n\n`);
     },
     cancel() {

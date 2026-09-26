@@ -49,7 +49,12 @@ export async function processAndStoreImage(file: File, folder: string): Promise<
   return { url: storage().publicUrl(`${storageKey}-${maxWidth}.webp`), storageKey, width: largest.width, height: largest.height };
 }
 
-export async function deleteStoredImage(storageKey: string | null | undefined) {
-  if (!storageKey) return;
-  await storage().deleteMany(IMAGE_WIDTHS.map((w) => `${storageKey}-${w}.webp`));
+export async function deleteStoredImage(image: { storageKey: string | null; url: string }) {
+  if (!image.storageKey) return; // external (legacy) image — nothing of ours to delete
+  const driver = storage();
+  if (driver.deleteUrls && /-\d+\.webp$/.test(image.url)) {
+    await driver.deleteUrls(IMAGE_WIDTHS.map((w) => image.url.replace(/-\d+\.webp$/, `-${w}.webp`)));
+    return;
+  }
+  await driver.deleteMany(IMAGE_WIDTHS.map((w) => `${image.storageKey}-${w}.webp`));
 }

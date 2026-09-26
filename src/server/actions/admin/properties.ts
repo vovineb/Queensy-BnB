@@ -176,7 +176,7 @@ export async function deleteImageAction(imageId: string): Promise<ActionResult> 
   try {
     const admin = await requireAdmin();
     const image = await db.propertyImage.delete({ where: { id: imageId }, include: { property: { select: { slug: true } } } });
-    await deleteStoredImage(image.storageKey).catch((e) => console.error("[images] delete failed", e));
+    await deleteStoredImage(image).catch((e) => console.error("[images] delete failed", e));
     if (image.isCover) {
       const next = await db.propertyImage.findFirst({ where: { propertyId: image.propertyId }, orderBy: { sortOrder: "asc" } });
       if (next) await db.propertyImage.update({ where: { id: next.id }, data: { isCover: true } });
@@ -232,9 +232,9 @@ export async function deletePropertyAction(propertyId: string): Promise<ActionRe
     const admin = await requireAdmin();
     const bookings = await db.booking.count({ where: { propertyId } });
     if (bookings > 0) throw new AppError("CONFLICT", "This property has bookings, so it can't be deleted. Archive it instead to hide it from guests.");
-    const images = await db.propertyImage.findMany({ where: { propertyId }, select: { storageKey: true } });
+    const images = await db.propertyImage.findMany({ where: { propertyId }, select: { storageKey: true, url: true } });
     await db.property.delete({ where: { id: propertyId } });
-    await Promise.all(images.map((i) => deleteStoredImage(i.storageKey).catch(() => undefined)));
+    await Promise.all(images.map((i) => deleteStoredImage(i).catch(() => undefined)));
     await audit({ actorId: admin.id, action: "property.delete", entityType: "property", entityId: propertyId });
     revalidatePath("/", "layout");
   } catch (error) {

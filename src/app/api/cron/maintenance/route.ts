@@ -7,7 +7,9 @@ import { db } from "@/server/db";
 /**
  * Scheduled maintenance: expire lapsed booking holds, complete finished stays,
  * purge expired sessions/tokens/rate-limit rows and old analytics events.
- * Call every 5–15 minutes with `Authorization: Bearer $CRON_SECRET`.
+ * Call every 5–15 minutes with `Authorization: Bearer $CRON_SECRET`. On Vercel,
+ * vercel.json schedules it (Vercel Cron sends the same header automatically when
+ * CRON_SECRET is set); holds also expire on demand whenever calendars are read.
  */
 export async function POST(request: Request) {
   const secret = process.env.CRON_SECRET;

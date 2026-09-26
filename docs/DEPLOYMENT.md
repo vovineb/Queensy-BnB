@@ -29,7 +29,13 @@ The app needs a Node server that allows long-lived responses, because `/api/real
   docker build -t queensy . && docker run --env-file .env.production -p 3000:3000 queensy
   ```
 
-- **Vercel** also works. SSE connections end when the function time limit is reached, and clients reconnect and refetch automatically. Use S3 storage, because the filesystem isn't persistent there.
+- **Vercel (free Hobby plan works):**
+  1. Import the GitHub repo. The framework and build settings are detected automatically.
+  2. Under **Storage**, create a **Blob** store and connect it to the project. This sets `BLOB_READ_WRITE_TOKEN`, which the app uses for photo uploads automatically.
+  3. Add `DATABASE_URL` (pooled), `DIRECT_DATABASE_URL`, `APP_SECRET` and `CRON_SECRET` for Production and Preview. `NEXT_PUBLIC_SITE_URL` is optional; the Vercel domain is used when it's missing.
+  4. `vercel.json` pins functions to `fra1` (Frankfurt, close to Kenya and to a Neon `eu-central-1` database) and schedules the maintenance job daily.
+
+  Realtime streams close just before the function time limit, and browsers reconnect automatically.
 
 Schedule the maintenance job every 5–15 minutes (host cron, GitHub Actions, or Cloud Scheduler):
 

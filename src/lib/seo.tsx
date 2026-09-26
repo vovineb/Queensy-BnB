@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import { getSiteUrl } from "./site-url";
 
-export const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+export const siteUrl = getSiteUrl;
 export const absoluteUrl = (path: string) => (path.startsWith("http") ? path : `${siteUrl()}${path.startsWith("/") ? "" : "/"}${path}`);
 
 /** Renders JSON-LD safely (escapes `<` so content can't break out of the script tag). */
